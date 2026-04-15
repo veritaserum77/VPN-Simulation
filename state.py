@@ -2,6 +2,7 @@
 state.py — Shared mutable runtime state (config + per-mode metrics).
 """
 import threading, time
+from config import LATENCY_MS, PACKET_LOSS, BANDWIDTH_KBPS
 
 _lock = threading.Lock()
 
@@ -10,7 +11,8 @@ def _blank():
             "bytes_plain":0,"bytes_enc":0,
             "rtts":[],"start":time.time()}
 
-_cfg = {"latency_ms":80,"loss_rate":0.10,"bw_kbps":1000,"mode":"vpn"}
+_cfg = {"latency_ms": LATENCY_MS, "loss_rate": PACKET_LOSS,
+        "bw_kbps": BANDWIDTH_KBPS, "mode": "vpn"}
 
 _metrics = {"vpn": _blank(), "direct": _blank()}
 

@@ -11,7 +11,7 @@ API_PORT    = 5200          # Flask dashboard API
 BUFFER_SIZE = 8192
 
 # WAN simulation defaults (overridable at runtime via API)
-LATENCY_MS     = 80
+LATENCY_MS     = 30
 PACKET_LOSS    = 0.10
 BANDWIDTH_KBPS = 1000
 

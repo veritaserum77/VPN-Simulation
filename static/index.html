@@ -261,19 +261,19 @@ hr.divider { border:none; border-top:1px solid var(--border); margin:4px 0; }
   <div class="sid-section">
     <div class="sid-label">WAN parameters</div>
     <div class="ctrl">
-      <label>Latency <span id="lbl-lat">80 ms</span></label>
-      <input type="range" id="sl-lat" min="10" max="400" step="10" value="80"
-             oninput="lbl_lat.textContent=this.value+' ms'" onchange="pushConfig()">
+      <label>Latency <span id="lbl-lat">30 ms</span></label>
+      <input type="range" id="sl-lat" min="10" max="400" step="10" value="30"
+             oninput="document.getElementById('lbl-lat').textContent=this.value+' ms';pushConfig()">
     </div>
     <div class="ctrl">
       <label>Packet loss <span id="lbl-loss">10 %</span></label>
       <input type="range" id="sl-loss" min="0" max="50" step="1" value="10"
-             oninput="lbl_loss.textContent=this.value+' %'" onchange="pushConfig()">
+             oninput="document.getElementById('lbl-loss').textContent=this.value+' %';pushConfig()">
     </div>
     <div class="ctrl">
       <label>Bandwidth <span id="lbl-bw">1000 kbps</span></label>
       <input type="range" id="sl-bw" min="100" max="5000" step="100" value="1000"
-             oninput="lbl_bw.textContent=this.value+' kbps'" onchange="pushConfig()">
+             oninput="document.getElementById('lbl-bw').textContent=this.value+' kbps';pushConfig()">
     </div>
   </div>
 
