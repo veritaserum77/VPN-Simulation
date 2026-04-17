@@ -122,3 +122,82 @@ All WAN parameters are also adjustable live from the dashboard sliders.
 | Tunnel header | 9-byte (ver+seq+len) | IP-in-IP, GRE, VXLAN |
 | WAN simulation | latency + loss + bandwidth | tc netem on Linux |
 | Dashboard API | Flask SSE | — |
+
+---
+
+## 4-Laptop IPsec-Style Simulation
+
+This repository now also includes a multi-device simulation with:
+
+- Laptop 1: VPN gateway
+- Laptop 2: Destination server
+- Laptop 3: Authorized client
+- Laptop 4: Unauthorized client
+
+Files used:
+
+- `ipsec_vpn_server.py`
+- `ipsec_destination_server.py`
+- `ipsec_client_node.py`
+- `ipsec_sim_common.py`
+
+### Install dependency (all laptops)
+
+```bash
+pip install cryptography
+```
+
+### Network values used below
+
+Replace these with your actual LAN IPs:
+
+- `DEST_IP` = Laptop 2 IP (destination server)
+- `VPN_IP` = Laptop 1 IP (VPN server)
+
+### 1) Laptop 2: Start destination server
+
+```bash
+python ipsec_destination_server.py --bind-host 0.0.0.0 --bind-port 7100
+```
+
+### 2) Laptop 1: Start VPN server
+
+`--dest-host` must point to Laptop 2.
+
+```bash
+python ipsec_vpn_server.py --bind-host 0.0.0.0 --bind-port 7000 --dest-host DEST_IP --dest-port 7100 --users client1:secure123
+```
+
+### 3) Laptop 3: Authorized client (success path)
+
+ESP mode (encryption + integrity):
+
+```bash
+python ipsec_client_node.py --server-host VPN_IP --server-port 7000 --username client1 --password secure123 --mode esp --client-id laptop3-auth --message "Hello via ESP tunnel"
+```
+
+AH mode (integrity only):
+
+```bash
+python ipsec_client_node.py --server-host VPN_IP --server-port 7000 --username client1 --password secure123 --mode ah --client-id laptop3-auth --message "Hello via AH mode"
+```
+
+### 4) Laptop 4: Unauthorized client (reject path)
+
+Use bad credentials to demonstrate failed authentication:
+
+```bash
+python ipsec_client_node.py --server-host VPN_IP --server-port 7000 --username attacker --password wrongpass --mode esp --client-id laptop4-unauth --message "Should fail"
+```
+
+Expected result: `Authentication failed: unauthorized`
+
+### How this maps to IPsec concepts
+
+- IKE phase 1 key exchange: X25519 DH in auth flow
+- IKE authentication: username/password check at VPN server
+- ESP: AES-256-GCM encrypted payload + HMAC-SHA256
+- AH: plaintext payload + HMAC-SHA256 (no encryption)
+- Tunnel mode: inner payload wrapped inside `vpn_data` packet with outer header
+- SA-like session: per-client session keys derived and held in VPN process memory
+
