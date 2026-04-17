@@ -29,3 +29,9 @@ DEST_SERVER_IP = "10.130.98.204"
 # -----------------------------
 # Format: "username:password,username2:password2"
 VPN_USERS = "client1:secure123"
+
+# -----------------------------
+# Destination response message
+# -----------------------------
+# Message the destination server sends back inside its encrypted response.
+DEST_SERVER_REPLY_MESSAGE = "Hi from Bhuvan Madusudhan"

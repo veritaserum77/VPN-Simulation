@@ -14,7 +14,12 @@ import time
 from typing import Dict, Tuple
 
 from ipsec_sim_common import DHPeer, SessionCrypto, b64d, b64e, recv_json, send_json
-from ipsec_lab_config import DEST_SERVER_BIND_HOST, DEST_SERVER_PORT, DEST_SERVER_IP
+from ipsec_lab_config import (
+    DEST_SERVER_BIND_HOST,
+    DEST_SERVER_PORT,
+    DEST_SERVER_IP,
+    DEST_SERVER_REPLY_MESSAGE,
+)
 
 
 def _preview(value: str, limit: int = 48) -> str:
@@ -106,7 +111,7 @@ class DestinationServer:
                 "type": "dest_response",
                 "status": "ok",
                 "source_identity": DEST_SERVER_IP,
-                "data": f"ACK from destination at {time.strftime('%H:%M:%S')}: {data}",
+                "data": f"{DEST_SERVER_REPLY_MESSAGE} at {time.strftime('%H:%M:%S')}: {data}",
             }
             print(f"[DEST] Generated response payload: {_preview(response_inner['data'])}")
 
