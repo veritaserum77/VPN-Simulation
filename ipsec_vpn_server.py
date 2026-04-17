@@ -26,6 +26,13 @@ from ipsec_sim_common import (
     recv_json,
     send_json,
 )
+from ipsec_lab_config import (
+    DEST_SERVER_IP,
+    DEST_SERVER_PORT,
+    VPN_SERVER_BIND_HOST,
+    VPN_SERVER_PORT,
+    VPN_USERS,
+)
 
 
 @dataclass
@@ -197,13 +204,13 @@ def parse_credentials(value: str) -> Dict[str, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="IPsec simulation VPN gateway")
-    parser.add_argument("--bind-host", default="0.0.0.0")
-    parser.add_argument("--bind-port", type=int, default=7000)
-    parser.add_argument("--dest-host", required=True)
-    parser.add_argument("--dest-port", type=int, default=7100)
+    parser.add_argument("--bind-host", default=VPN_SERVER_BIND_HOST)
+    parser.add_argument("--bind-port", type=int, default=VPN_SERVER_PORT)
+    parser.add_argument("--dest-host", default=DEST_SERVER_IP)
+    parser.add_argument("--dest-port", type=int, default=DEST_SERVER_PORT)
     parser.add_argument(
         "--users",
-        default="client1:secure123",
+        default=VPN_USERS,
         help="Comma-separated credentials, e.g. client1:secure123,client2:abc",
     )
     args = parser.parse_args()

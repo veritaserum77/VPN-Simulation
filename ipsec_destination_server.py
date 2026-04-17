@@ -14,6 +14,7 @@ import time
 from typing import Dict, Tuple
 
 from ipsec_sim_common import recv_json, send_json
+from ipsec_lab_config import DEST_SERVER_BIND_HOST, DEST_SERVER_PORT
 
 
 class DestinationServer:
@@ -59,8 +60,8 @@ class DestinationServer:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="IPsec simulation destination server")
-    parser.add_argument("--bind-host", default="0.0.0.0")
-    parser.add_argument("--bind-port", type=int, default=7100)
+    parser.add_argument("--bind-host", default=DEST_SERVER_BIND_HOST)
+    parser.add_argument("--bind-port", type=int, default=DEST_SERVER_PORT)
     args = parser.parse_args()
 
     DestinationServer(bind_host=args.bind_host, bind_port=args.bind_port).start()

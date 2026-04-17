@@ -140,6 +140,17 @@ Files used:
 - `ipsec_destination_server.py`
 - `ipsec_client_node.py`
 - `ipsec_sim_common.py`
+- `ipsec_lab_config.py` (edit this once with your real laptop IPs)
+
+### Set global IPs once (recommended)
+
+Open `ipsec_lab_config.py` and edit:
+
+- `VPN_SERVER_IP` = Laptop 1 real LAN IP (clients connect to this)
+- `DEST_SERVER_IP` = Laptop 2 real LAN IP (VPN forwards to this)
+- `VPN_USERS` = allowed credentials, e.g. `client1:secure123`
+
+After this, most commands can be run without passing IPs explicitly.
 
 ### Install dependency (all laptops)
 
@@ -162,12 +173,24 @@ Important: `DEST_IP` and `VPN_IP` are placeholders, not literal text. For exampl
 python ipsec_destination_server.py --bind-host 0.0.0.0 --bind-port 7100
 ```
 
+Short form (uses `ipsec_lab_config.py`):
+
+```bash
+python ipsec_destination_server.py
+```
+
 ### 2) Laptop 1: Start VPN server
 
 `--dest-host` must point to Laptop 2.
 
 ```bash
 python ipsec_vpn_server.py --bind-host 0.0.0.0 --bind-port 7000 --dest-host 192.168.1.11 --dest-port 7100 --users client1:secure123
+```
+
+Short form (uses `ipsec_lab_config.py`):
+
+```bash
+python ipsec_vpn_server.py
 ```
 
 ### 3) Laptop 3: Authorized client (success path)
@@ -178,10 +201,22 @@ ESP mode (encryption + integrity):
 python ipsec_client_node.py --server-host 192.168.1.10 --server-port 7000 --username client1 --password secure123 --mode esp --client-id laptop3-auth --message "Hello via ESP tunnel"
 ```
 
+Short form (uses `VPN_SERVER_IP` from `ipsec_lab_config.py`):
+
+```bash
+python ipsec_client_node.py --username client1 --password secure123 --mode esp --client-id laptop3-auth --message "Hello via ESP tunnel"
+```
+
 AH mode (integrity only):
 
 ```bash
 python ipsec_client_node.py --server-host 192.168.1.10 --server-port 7000 --username client1 --password secure123 --mode ah --client-id laptop3-auth --message "Hello via AH mode"
+```
+
+Short form:
+
+```bash
+python ipsec_client_node.py --username client1 --password secure123 --mode ah --client-id laptop3-auth --message "Hello via AH mode"
 ```
 
 ### 4) Laptop 4: Unauthorized client (reject path)

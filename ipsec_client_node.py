@@ -14,6 +14,7 @@ import sys
 from typing import Dict
 
 from ipsec_sim_common import DHPeer, SessionCrypto, b64d, b64e, recv_json, send_json
+from ipsec_lab_config import VPN_SERVER_IP, VPN_SERVER_PORT
 
 
 class VPNClient:
@@ -137,8 +138,8 @@ class VPNClient:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="IPsec simulation client node")
-    parser.add_argument("--server-host", required=True)
-    parser.add_argument("--server-port", type=int, default=7000)
+    parser.add_argument("--server-host", default=VPN_SERVER_IP)
+    parser.add_argument("--server-port", type=int, default=VPN_SERVER_PORT)
     parser.add_argument("--username", required=True)
     parser.add_argument("--password", required=True)
     parser.add_argument("--mode", choices=["ah", "esp"], default="esp")
