@@ -35,7 +35,37 @@ class VPNClient:
         self.seq = 1
 
     def run(self, message: str) -> int:
-        with socket.create_connection((self.server_host, self.server_port), timeout=8) as sock:
+        if self.server_host.upper() in ("VPN_IP", "DEST_IP"):
+            print(
+                f"[CLIENT:{self.client_id}] Invalid --server-host '{self.server_host}'. "
+                "Use the actual VPN server LAN IP, e.g. 192.168.1.20"
+            )
+            return 1
+
+        try:
+            sock = socket.create_connection((self.server_host, self.server_port), timeout=8)
+        except socket.gaierror:
+            print(
+                f"[CLIENT:{self.client_id}] Could not resolve host '{self.server_host}'. "
+                "Pass a real IP/hostname for --server-host."
+            )
+            return 1
+        except TimeoutError:
+            print(
+                f"[CLIENT:{self.client_id}] Connection to {self.server_host}:{self.server_port} timed out."
+            )
+            return 1
+        except ConnectionRefusedError:
+            print(
+                f"[CLIENT:{self.client_id}] Connection refused by {self.server_host}:{self.server_port}. "
+                "Check if VPN server is running and firewall allows port 7000."
+            )
+            return 1
+        except OSError as exc:
+            print(f"[CLIENT:{self.client_id}] Network error: {exc}")
+            return 1
+
+        with sock:
             auth_msg = {
                 "type": "auth",
                 "username": self.username,

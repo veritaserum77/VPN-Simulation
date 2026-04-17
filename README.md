@@ -154,6 +154,8 @@ Replace these with your actual LAN IPs:
 - `DEST_IP` = Laptop 2 IP (destination server)
 - `VPN_IP` = Laptop 1 IP (VPN server)
 
+Important: `DEST_IP` and `VPN_IP` are placeholders, not literal text. For example, use `192.168.1.11`.
+
 ### 1) Laptop 2: Start destination server
 
 ```bash
@@ -165,7 +167,7 @@ python ipsec_destination_server.py --bind-host 0.0.0.0 --bind-port 7100
 `--dest-host` must point to Laptop 2.
 
 ```bash
-python ipsec_vpn_server.py --bind-host 0.0.0.0 --bind-port 7000 --dest-host DEST_IP --dest-port 7100 --users client1:secure123
+python ipsec_vpn_server.py --bind-host 0.0.0.0 --bind-port 7000 --dest-host 192.168.1.11 --dest-port 7100 --users client1:secure123
 ```
 
 ### 3) Laptop 3: Authorized client (success path)
@@ -173,13 +175,13 @@ python ipsec_vpn_server.py --bind-host 0.0.0.0 --bind-port 7000 --dest-host DEST
 ESP mode (encryption + integrity):
 
 ```bash
-python ipsec_client_node.py --server-host VPN_IP --server-port 7000 --username client1 --password secure123 --mode esp --client-id laptop3-auth --message "Hello via ESP tunnel"
+python ipsec_client_node.py --server-host 192.168.1.10 --server-port 7000 --username client1 --password secure123 --mode esp --client-id laptop3-auth --message "Hello via ESP tunnel"
 ```
 
 AH mode (integrity only):
 
 ```bash
-python ipsec_client_node.py --server-host VPN_IP --server-port 7000 --username client1 --password secure123 --mode ah --client-id laptop3-auth --message "Hello via AH mode"
+python ipsec_client_node.py --server-host 192.168.1.10 --server-port 7000 --username client1 --password secure123 --mode ah --client-id laptop3-auth --message "Hello via AH mode"
 ```
 
 ### 4) Laptop 4: Unauthorized client (reject path)
@@ -187,7 +189,7 @@ python ipsec_client_node.py --server-host VPN_IP --server-port 7000 --username c
 Use bad credentials to demonstrate failed authentication:
 
 ```bash
-python ipsec_client_node.py --server-host VPN_IP --server-port 7000 --username attacker --password wrongpass --mode esp --client-id laptop4-unauth --message "Should fail"
+python ipsec_client_node.py --server-host 192.168.1.10 --server-port 7000 --username attacker --password wrongpass --mode esp --client-id laptop4-unauth --message "Should fail"
 ```
 
 Expected result: `Authentication failed: unauthorized`
