@@ -29,6 +29,7 @@ from ipsec_sim_common import (
 from ipsec_lab_config import (
     DEST_SERVER_IP,
     DEST_SERVER_PORT,
+    VPN_SERVER_IP,
     VPN_SERVER_BIND_HOST,
     VPN_SERVER_PORT,
     VPN_USERS,
@@ -64,6 +65,7 @@ class VPNServer:
         sock.bind((self.bind_host, self.bind_port))
         sock.listen(20)
         print(f"[VPN] Listening on {self.bind_host}:{self.bind_port}")
+        print(f"[VPN] Advertised VPN identity is {VPN_SERVER_IP}")
         print(f"[VPN] Forward destination is {self.dest_host}:{self.dest_port}")
         while True:
             conn, addr = sock.accept()
@@ -103,12 +105,13 @@ class VPNServer:
                 dest_req = {
                     "type": "dest_request",
                     "username": session.username,
+                    "vpn_server_ip": VPN_SERVER_IP,
                     "data": inner.get("data", ""),
                     "ts": now_ts(),
                 }
                 dest_resp = self._forward_to_destination(dest_req)
 
-                outer_src = f"vpn:{self.bind_host}"
+                outer_src = f"vpn:{VPN_SERVER_IP}"
                 outer_dst = packet.get("outer_header", {}).get("src", "client")
                 response_inner = {
                     "type": "response",
@@ -179,12 +182,31 @@ class VPNServer:
         return session
 
     def _forward_to_destination(self, payload: Dict[str, str]) -> Dict[str, str]:
-        with socket.create_connection((self.dest_host, self.dest_port), timeout=5) as ds:
-            send_json(ds, payload)
-            resp = recv_json(ds)
-            if not resp:
-                return {"status": "error", "data": "No response from destination", "source_identity": "vpn_gateway"}
-            return resp
+        try:
+            with socket.create_connection((self.dest_host, self.dest_port), timeout=5) as ds:
+                send_json(ds, payload)
+                resp = recv_json(ds)
+                if not resp:
+                    return {
+                        "status": "error",
+                        "data": "No response from destination",
+                        "source_identity": "vpn_gateway",
+                    }
+                return resp
+        except TimeoutError:
+            print(f"[VPN] Forward timeout to destination {self.dest_host}:{self.dest_port}")
+            return {
+                "status": "error",
+                "data": f"Destination timeout at {self.dest_host}:{self.dest_port}",
+                "source_identity": "vpn_gateway",
+            }
+        except OSError as exc:
+            print(f"[VPN] Forward error to destination {self.dest_host}:{self.dest_port}: {exc}")
+            return {
+                "status": "error",
+                "data": f"Destination unreachable at {self.dest_host}:{self.dest_port}",
+                "source_identity": "vpn_gateway",
+            }
 
 
 def parse_credentials(value: str) -> Dict[str, str]:

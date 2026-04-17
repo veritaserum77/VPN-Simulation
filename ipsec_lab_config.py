@@ -22,7 +22,7 @@ DEST_SERVER_BIND_HOST = "0.0.0.0"
 # Destination server listening port.
 DEST_SERVER_PORT = 7100
 # Real LAN IP of Laptop 2 (destination server). VPN server forwards to this IP.
-DEST_SERVER_IP = "10.130.98.160"
+DEST_SERVER_IP = "10.130.98.204"
 
 # -----------------------------
 # Authentication users at VPN

@@ -40,6 +40,7 @@ class DestinationServer:
 
             username = req.get("username", "unknown")
             data = req.get("data", "")
+            vpn_server_ip = req.get("vpn_server_ip", addr[0])
             print(
                 f"[DEST] request from VPN transport {addr[0]}:{addr[1]}"
                 f" | user={username} | payload={data!r}"
@@ -48,7 +49,7 @@ class DestinationServer:
             response: Dict[str, str] = {
                 "type": "dest_response",
                 "status": "ok",
-                "source_identity": "vpn_gateway",
+                "source_identity": vpn_server_ip,
                 "data": f"ACK from destination at {time.strftime('%H:%M:%S')}: {data}",
             }
             send_json(conn, response)
