@@ -17,6 +17,10 @@ from ipsec_sim_common import DHPeer, SessionCrypto, b64d, b64e, recv_json, send_
 from ipsec_lab_config import VPN_SERVER_IP, VPN_SERVER_PORT
 
 
+def _preview(data: bytes, limit: int = 24) -> str:
+    return data[:limit].hex() + ("..." if len(data) > limit else "")
+
+
 class VPNClient:
     def __init__(
         self,
@@ -67,12 +71,15 @@ class VPNClient:
             return 1
 
         with sock:
+            print(f"[CLIENT:{self.client_id}] TCP connected to VPN server {self.server_host}:{self.server_port}")
+
             auth_msg = {
                 "type": "auth",
                 "username": self.username,
                 "password": self.password,
                 "mode": self.mode,
             }
+            print(f"[CLIENT:{self.client_id}] IKE phase 1 auth -> {self.username} / {'*' * len(self.password)}")
             send_json(sock, auth_msg)
 
             auth_result = recv_json(sock)
@@ -83,14 +90,20 @@ class VPNClient:
 
             server_pub = b64d(auth_result["server_pub"])
             salt = b64d(auth_result["salt"])
+            print(f"[CLIENT:{self.client_id}] Received VPN DH public key preview: {_preview(server_pub)}")
+            print(f"[CLIENT:{self.client_id}] Received session salt: {salt.hex()}")
 
             dh = DHPeer()
-            send_json(sock, {"type": "client_key", "client_pub": b64e(dh.public_bytes())})
+            client_pub = dh.public_bytes()
+            print(f"[CLIENT:{self.client_id}] Generated client DH public key preview: {_preview(client_pub)}")
+            send_json(sock, {"type": "client_key", "client_pub": b64e(client_pub)})
 
             shared_secret = dh.shared_secret(server_pub)
             info = f"ipsec-sim:{self.username}:{self.mode}".encode("utf-8")
             keys = SessionCrypto.build_keys(shared_secret, salt=salt, info=info)
             crypto = SessionCrypto(keys=keys)
+            print(f"[CLIENT:{self.client_id}] Derived shared secret preview: {_preview(shared_secret)}")
+            print(f"[CLIENT:{self.client_id}] Built SA keys for mode={self.mode.upper()} (enc+hmac)")
 
             done = recv_json(sock)
             if not done or not done.get("ok"):
@@ -104,6 +117,7 @@ class VPNClient:
                 "dest": "destination_server",
                 "data": message,
             }
+            print(f"[CLIENT:{self.client_id}] Inner packet before tunneling: {inner}")
             tunnel_packet = crypto.wrap(
                 inner_packet=inner,
                 mode=self.mode,
@@ -111,7 +125,17 @@ class VPNClient:
                 outer_src=f"client:{self.client_id}",
                 outer_dst="vpn_gateway",
             )
+            print(
+                f"[CLIENT:{self.client_id}] Encapsulated packet -> outer_header={tunnel_packet['outer_header']} "
+                f"mode={tunnel_packet['mode']} seq={tunnel_packet['seq']} hmac={tunnel_packet['hmac'][:32]}..."
+            )
+            if self.mode == "esp":
+                payload = tunnel_packet["payload"]
+                print(f"[CLIENT:{self.client_id}] ESP ciphertext preview: {payload['ciphertext'][:48]}...")
+            else:
+                print(f"[CLIENT:{self.client_id}] AH plaintext preview: {tunnel_packet['payload']['plaintext'][:48]}...")
             send_json(sock, tunnel_packet)
+            print(f"[CLIENT:{self.client_id}] Sent tunneled packet to VPN server")
 
             response = recv_json(sock)
             if not response:
@@ -122,11 +146,22 @@ class VPNClient:
                 print(f"[CLIENT:{self.client_id}] Packet dropped/rejected: {response}")
                 return 1
 
+            print(
+                f"[CLIENT:{self.client_id}] Received response tunnel -> outer_header={response.get('outer_header')} "
+                f"mode={response.get('mode')} seq={response.get('seq')} hmac={str(response.get('hmac', ''))[:32]}..."
+            )
+            if response.get("mode") == "esp":
+                print(f"[CLIENT:{self.client_id}] Response ESP ciphertext preview: {response['payload']['ciphertext'][:48]}...")
+            else:
+                print(f"[CLIENT:{self.client_id}] Response AH plaintext preview: {response['payload']['plaintext'][:48]}...")
+
             try:
                 inner_resp: Dict[str, str] = crypto.unwrap(response)
             except Exception as exc:
                 print(f"[CLIENT:{self.client_id}] Failed to verify/decrypt response: {exc}")
                 return 1
+
+            print(f"[CLIENT:{self.client_id}] Decrypted response inner packet: {inner_resp}")
 
             print(f"[CLIENT:{self.client_id}] Destination response: {inner_resp.get('data', '')}")
             print(

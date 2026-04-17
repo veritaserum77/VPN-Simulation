@@ -36,6 +36,82 @@ from ipsec_lab_config import (
 )
 
 
+def _preview(value: bytes | str, limit: int = 24) -> str:
+    if isinstance(value, bytes):
+        return value[:limit].hex() + ("..." if len(value) > limit else "")
+    return value[:limit] + ("..." if len(value) > limit else "")
+
+
+def _secure_forward_to_destination(
+    dest_host: str,
+    dest_port: int,
+    vpn_server_ip: str,
+    username: str,
+    plaintext_request: Dict[str, str],
+) -> Dict[str, str]:
+    print(f"[VPN] Establishing encrypted VPN↔DEST tunnel to {dest_host}:{dest_port}")
+    with socket.create_connection((dest_host, dest_port), timeout=5) as ds:
+        print(f"[VPN] VPN→DEST TCP connected as {vpn_server_ip}")
+
+        hello = {
+            "type": "vpn_hello",
+            "vpn_server_ip": vpn_server_ip,
+            "username": username,
+        }
+        print(f"[VPN] VPN→DEST IKE phase 1 hello: {hello}")
+        send_json(ds, hello)
+
+        hello_ack = recv_json(ds)
+        if not hello_ack or hello_ack.get("type") != "vpn_hello_ack":
+            raise RuntimeError(f"destination handshake failed: {hello_ack}")
+
+        dest_pub = b64d(hello_ack["server_pub"])
+        salt = b64d(hello_ack["salt"])
+        print(f"[VPN] Received DEST DH public key preview: {_preview(dest_pub)}")
+        print(f"[VPN] Received DEST salt: {salt.hex()}")
+
+        vpn_dh = DHPeer()
+        vpn_pub = vpn_dh.public_bytes()
+        print(f"[VPN] Generated VPN DH public key for DEST preview: {_preview(vpn_pub)}")
+        send_json(ds, {"type": "vpn_key", "client_pub": b64e(vpn_pub)})
+
+        shared_secret = vpn_dh.shared_secret(dest_pub)
+        info = f"vpn-dest:{vpn_server_ip}:{username}".encode("utf-8")
+        keys = SessionCrypto.build_keys(shared_secret, salt=salt, info=info)
+        secure_session = SessionCrypto(keys=keys)
+        print(f"[VPN] Derived VPN↔DEST shared secret preview: {_preview(shared_secret)}")
+        print(f"[VPN] Built VPN↔DEST SA keys (enc+hmac)")
+
+        secure_req = secure_session.wrap(
+            inner_packet=plaintext_request,
+            mode="esp",
+            seq=1,
+            outer_src=f"vpn:{vpn_server_ip}",
+            outer_dst=f"dest:{dest_host}",
+        )
+        print(
+            f"[VPN] Encrypted request to DEST -> outer_header={secure_req['outer_header']} "
+            f"seq={secure_req['seq']} hmac={secure_req['hmac'][:32]}..."
+        )
+        print(f"[VPN] VPN→DEST ESP ciphertext preview: {secure_req['payload']['ciphertext'][:48]}...")
+        send_json(ds, {"type": "vpn_secure_request", "packet": secure_req})
+
+        secure_resp_msg = recv_json(ds)
+        if not secure_resp_msg or secure_resp_msg.get("type") != "vpn_secure_response":
+            raise RuntimeError(f"missing encrypted destination response: {secure_resp_msg}")
+
+        secure_resp = secure_resp_msg["packet"]
+        print(
+            f"[VPN] Received encrypted response from DEST -> outer_header={secure_resp.get('outer_header')} "
+            f"seq={secure_resp.get('seq')} hmac={str(secure_resp.get('hmac', ''))[:32]}..."
+        )
+        print(f"[VPN] DEST response ESP ciphertext preview: {secure_resp['payload']['ciphertext'][:48]}...")
+
+        decrypted_resp = secure_session.unwrap(secure_resp)
+        print(f"[VPN] Decrypted response from DEST: {decrypted_resp}")
+        return decrypted_resp
+
+
 @dataclass
 class ClientSession:
     username: str
@@ -79,6 +155,7 @@ class VPNServer:
                 return
 
             print(f"[VPN] Session established for user={session.username}, mode={session.mode}")
+            print(f"[VPN] SA active for {session.username}: AH/ESP protection enabled")
 
             while True:
                 packet = recv_json(conn)
@@ -90,17 +167,29 @@ class VPNServer:
                     send_json(conn, {"type": "error", "message": "expected vpn_data packet"})
                     continue
 
+                print(
+                    f"[VPN] Received tunnel packet -> outer_header={packet.get('outer_header')} "
+                    f"mode={packet.get('mode')} seq={packet.get('seq')} hmac={str(packet.get('hmac', ''))[:32]}..."
+                )
+                if packet.get("mode") == "esp":
+                    print(f"[VPN] Encrypted ESP ciphertext preview: {packet['payload']['ciphertext'][:48]}...")
+                else:
+                    print(f"[VPN] AH plaintext preview: {packet['payload']['plaintext'][:48]}...")
+
                 seq = int(packet.get("seq", 0))
                 if seq <= session.last_seq:
                     send_json(conn, {"type": "drop", "reason": "replay_or_out_of_order", "seq": seq})
                     continue
                 session.last_seq = seq
 
+                print(f"[VPN] Verifying integrity and decrypting packet seq={seq}")
                 try:
                     inner = session.crypto.unwrap(packet)
                 except Exception as exc:
                     send_json(conn, {"type": "drop", "reason": f"integrity_or_decrypt_failed: {exc}"})
                     continue
+
+                print(f"[VPN] Decrypted inner packet: {inner}")
 
                 dest_req = {
                     "type": "dest_request",
@@ -109,7 +198,15 @@ class VPNServer:
                     "data": inner.get("data", ""),
                     "ts": now_ts(),
                 }
-                dest_resp = self._forward_to_destination(dest_req)
+                print(f"[VPN] Forwarding plaintext to destination {self.dest_host}:{self.dest_port} as {VPN_SERVER_IP}")
+                dest_resp = _secure_forward_to_destination(
+                    dest_host=self.dest_host,
+                    dest_port=self.dest_port,
+                    vpn_server_ip=VPN_SERVER_IP,
+                    username=session.username,
+                    plaintext_request=dest_req,
+                )
+                print(f"[VPN] Destination replied with: {dest_resp}")
 
                 outer_src = f"vpn:{VPN_SERVER_IP}"
                 outer_dst = packet.get("outer_header", {}).get("src", "client")
@@ -127,7 +224,16 @@ class VPNServer:
                     outer_src=outer_src,
                     outer_dst=outer_dst,
                 )
+                print(
+                    f"[VPN] Re-encapsulated response -> outer_header={response_packet['outer_header']} "
+                    f"mode={response_packet['mode']} seq={response_packet['seq']} hmac={response_packet['hmac'][:32]}..."
+                )
+                if session.mode == "esp":
+                    print(f"[VPN] Response ESP ciphertext preview: {response_packet['payload']['ciphertext'][:48]}...")
+                else:
+                    print(f"[VPN] Response AH plaintext preview: {response_packet['payload']['plaintext'][:48]}...")
                 send_json(conn, response_packet)
+                print(f"[VPN] Sent secured response back to client {session.username}")
 
         except Exception as exc:
             print(f"[VPN] Error with client {addr}: {exc}")
@@ -156,6 +262,7 @@ class VPNServer:
 
         server_dh = DHPeer()
         salt = b"vpn-sim-ike-salt-v1"
+        print(f"[VPN] IKE auth accepted for {username}; generating server DH key pair")
         send_json(
             conn,
             {
@@ -173,41 +280,16 @@ class VPNServer:
             return None
 
         client_pub = b64d(key_msg["client_pub"])
+        print(f"[VPN] Received client DH public key preview: {_preview(client_pub)}")
         shared_secret = server_dh.shared_secret(client_pub)
         info = f"ipsec-sim:{username}:{mode}".encode("utf-8")
         keys = SessionCrypto.build_keys(shared_secret, salt=salt, info=info)
         session = ClientSession(username=username, mode=mode, crypto=SessionCrypto(keys=keys))
+        print(f"[VPN] Derived shared secret preview: {_preview(shared_secret)}")
+        print(f"[VPN] Created SA for {username} with mode={mode.upper()} and HMAC integrity")
 
         send_json(conn, {"type": "ike_done", "ok": True})
         return session
-
-    def _forward_to_destination(self, payload: Dict[str, str]) -> Dict[str, str]:
-        try:
-            with socket.create_connection((self.dest_host, self.dest_port), timeout=5) as ds:
-                send_json(ds, payload)
-                resp = recv_json(ds)
-                if not resp:
-                    return {
-                        "status": "error",
-                        "data": "No response from destination",
-                        "source_identity": "vpn_gateway",
-                    }
-                return resp
-        except TimeoutError:
-            print(f"[VPN] Forward timeout to destination {self.dest_host}:{self.dest_port}")
-            return {
-                "status": "error",
-                "data": f"Destination timeout at {self.dest_host}:{self.dest_port}",
-                "source_identity": "vpn_gateway",
-            }
-        except OSError as exc:
-            print(f"[VPN] Forward error to destination {self.dest_host}:{self.dest_port}: {exc}")
-            return {
-                "status": "error",
-                "data": f"Destination unreachable at {self.dest_host}:{self.dest_port}",
-                "source_identity": "vpn_gateway",
-            }
-
 
 def parse_credentials(value: str) -> Dict[str, str]:
     out: Dict[str, str] = {}
